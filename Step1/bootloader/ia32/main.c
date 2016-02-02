@@ -89,7 +89,7 @@ char serial_read(uint16_t port) {
  *   http://wiki.osdev.org/VGA_Resources
  */
 
-volatile char *video = (volatile char*)0xB8000;
+volatile static char *video = (volatile char*)0xB8000;
 
 void write_string( int colour, const char *string ) {
 	//video = malloc(sizeof(char));
@@ -102,16 +102,55 @@ void write_string( int colour, const char *string ) {
 
 void write_c( int colour, const char c ) {
 
-	if(c == '\n'){
-
-		volatile uint64_t diff = (long) (video - 0xB8000);
-		volatile uint64_t division = diff / 0xA0;
-		video = ((division + 1) * 0xA0) + 0xB8000;
-
+	//We check if the index (what video is pointing to) is the first character in the line 25
+ 	if((long) (video - 0xB8000) == 25 * 0xA0){
+	    doScroll();
 	}
-	*video++ = c;
-    *video++ = colour;
 
+ 	//if it is a enter we will move the index to the next line
+	if(c == '\n'){
+		volatile uint64_t diff = (long) (video - 0xB8000);
+		volatile uint64_t division = diff / 160;
+		video = ((division+1) * 160) + 0xB8000;
+	}
+
+	//if it is a backspace or a delete, we will fill it out with a space.
+	else if(c ==127){
+		*(video - 2) = ' ';
+		//*(video-2) = colour;
+		video = video - 2;
+	}
+	//write the character and the color
+	else{
+		*video++ = c;
+		*video++ = colour;
+	}
+
+
+}
+
+void doScroll(){
+
+
+	volatile static char *scrolling = (volatile char*) 0xB8000;
+	volatile uint16_t i = 0;
+	volatile uint16_t j = 0;
+
+	//Move the next line into the previous one. Do this for all the lines. The line in the row zero disappears.
+    for(i=0; i<24; i++){
+      for(j=0; j<160; j++){
+
+    	   scrolling[(i*160) + j] = scrolling[((i+1)*160) + j];
+      }
+    }
+
+    //The last line (in the row 24) is filled out with spaces.
+    for(j=0; j<160; j++){
+        scrolling[(24*160) + j] = ' ';
+    }
+
+    //Move the pointer to the beginning of the row 24.
+    video = (24*160) + 0xB8000;
 }
 
 
@@ -121,31 +160,33 @@ void kputchar(int c, void *arg) {
 }
 
 void kmain(void) {
-
   //write_string(0x2a,"Console greetings!");
-
+  char* history = "";
   serial_init(COM1);
   serial_write_string(COM1,"\n\rHello!\n\r\nThis is a simple echo console... please type something.\n\r");
 
   serial_write_char(COM1,'>');
   while(1) {
     unsigned char c;
-    //serial_write_string(COM1, "cosa cosa");
     c=serial_read(COM1);
     if (c==13) {
       c = '\r';
       serial_write_char(COM1,c);
-      //write_c(0x2a,c);
+
       c = '\n';
       serial_write_char(COM1,c);
       write_c(0x2a,c);
       serial_write_char(COM1,'>');
-      //write_c(0x2a,'>');
+    }
+    else if(c==27 || c== '\033'){
+    	write_c(0x2a,c);
     }
      else
       serial_write_char(COM1,c);
-      //serial_write_char(COM1,(char) *video);
       write_c(0x2a,c);
-
+      history = history + c;
+      if(c == 'w'){
+        serial_write_string(COM1,history);
+      }
   }
 }
