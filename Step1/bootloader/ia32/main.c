@@ -51,7 +51,6 @@ static void serial_init(uint16_t port) {
 }
 
 
-
 static
 void serial_write_char(uint16_t port, char c) {
   while ((inb(port + 5) & 0x20) == 0);
@@ -91,6 +90,10 @@ char serial_read(uint16_t port) {
 
 volatile static char *video = (volatile char*)0xB8000;
 
+volatile static char *history;
+
+volatile static uint16_t * pointersToHistory;
+
 void write_string( int colour, const char *string ) {
 	//video = malloc(sizeof(char));
 
@@ -107,11 +110,15 @@ void write_c( int colour, const char c ) {
 	    doScroll();
 	}
 
- 	//if it is a enter we will move the index to the next line
+ 	//if it is an enter we will move the index to the next line
 	if(c == '\n'){
 		volatile uint64_t diff = (long) (video - 0xB8000);
 		volatile uint64_t division = diff / 160;
 		video = ((division+1) * 160) + 0xB8000;
+
+		*history++='0';
+		*pointersToHistory++=history++;
+
 	}
 
 	//if it is a backspace or a delete, we will fill it out with a space.
@@ -124,6 +131,9 @@ void write_c( int colour, const char c ) {
 	else{
 		*video++ = c;
 		*video++ = colour;
+
+		*history++=c;
+
 	}
 
 
@@ -161,7 +171,10 @@ void kputchar(int c, void *arg) {
 
 void kmain(void) {
   //write_string(0x2a,"Console greetings!");
-  char* history = "";
+  //char* history = "";
+
+   *pointersToHistory =  history;
+
   serial_init(COM1);
   serial_write_string(COM1,"\n\rHello!\n\r\nThis is a simple echo console... please type something.\n\r");
 
@@ -184,9 +197,9 @@ void kmain(void) {
      else
       serial_write_char(COM1,c);
       write_c(0x2a,c);
-      history = history + c;
-      if(c == 'w'){
+      //history = history + c;
+      /*if(c == 'w'){
         serial_write_string(COM1,history);
-      }
+      }*/
   }
 }
